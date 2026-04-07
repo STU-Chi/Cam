@@ -3,13 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>健康樂活揮手大挑戰 - 手機自適應版</title>
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#3498db">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3048/3048122.png">
+    
+    <title>健康樂活揮手大挑戰</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2.2.2/dist/posenet.min.js"></script>
     
     <style>
-        body { font-family: '微軟正黑體', sans-serif; background-color: #f0f8ff; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; text-align: center; }
-        #app-container { width: 100%; max-width: 800px; height: 100vh; max-height: 100vh; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        body { font-family: '微軟正黑體', sans-serif; background-color: #f0f8ff; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; text-align: center; }
+        #app-container { width: 100%; max-width: 800px; height: 100%; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
         
         h1 { color: #2c3e50; font-size: 2em; margin: 10px 0; padding: 0 10px; }
         p.desc { font-size: 1.1em; color: #7f8c8d; }
@@ -18,16 +25,8 @@
         #btn-start { background: linear-gradient(45deg, #FF512F, #DD2476); color: white; margin-top: 20px; }
         #btn-start:disabled { background: #bdc3c7; cursor: wait; }
 
-        /* --- 針對手機優化的遊戲區域 --- */
-        #game-area { 
-            display: none; 
-            position: relative; 
-            width: 100%; /* 寬度自動填滿手機 */
-            max-width: 640px; 
-            background: #000; 
-            overflow: hidden; 
-        }
-        /* 影片跟畫布強制重疊，寬高比例一致 */
+        /* 讓遊戲區域完美貼合螢幕，解決座標錯亂 */
+        #game-area { display: none; position: relative; width: 100%; max-width: 640px; background: #000; overflow: hidden; }
         #video { width: 100%; height: auto; transform: scaleX(-1); display: block; }
         #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); }
         
@@ -49,7 +48,7 @@
     </div>
 
     <div id="game-area">
-        <video id="video" autoplay playsinline></video>
+        <video id="video" autoplay playsinline muted></video>
         <canvas id="game-canvas"></canvas>
         <div id="ui-layer">
             <div>分數: <span id="score" style="color: #f1c40f;">0</span></div>
@@ -67,11 +66,12 @@
 </div>
 
 <script>
+    // 記得將這行換成您的 Discord Webhook
     const DISCORD_WEBHOOK_URL = "YOUR_DISCORD_WEBHOOK_URL_HERE"; 
     
     let net, video = document.getElementById('video'), canvas = document.getElementById('game-canvas'), ctx = canvas.getContext('2d');
-    let score = 0, timeLeft = 30, gameInterval, timerInterval, isGameRunning = false;
-    let target = { x: 0, y: 0, radius: 50, active: false }; // 稍微縮小一點紅點避免超出螢幕
+    let score = 0, timeLeft = 30, timerInterval, isGameRunning = false;
+    let target = { x: 0, y: 0, radius: 40, active: false }; // 紅點半徑稍微縮小，更適合手機
 
     window.onload = async () => {
         document.getElementById('loading-status').style.display = 'block';
@@ -88,12 +88,13 @@
         document.getElementById('game-area').style.display = 'block';
 
         try {
-            // 【關鍵修改1】強制使用手機前置鏡頭 (facingMode: 'user')，不強制設定寬高，讓手機自己決定
+            // 使用手機前置鏡頭
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
             video.srcObject = stream;
             
-            video.onloadedmetadata = () => {
-                // 【關鍵修改2】讓 Canvas 畫布的真實尺寸，完全等於手機相機拍出來的尺寸！這樣座標就絕對不會錯位了！
+            // 等待影片確實讀取到尺寸後再繼續
+            video.onloadeddata = () => {
+                // 讓畫布跟影片的真實畫素完全 1:1 對齊
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 
@@ -113,8 +114,8 @@
     async function gameLoop() {
         if (!isGameRunning) return;
 
-        // 【關鍵修改3】flipHorizontal 設為 true，對應手機自拍鏡像
-        const pose = await net.estimateSinglePose(video, { flipHorizontal: true });
+        // 【修復關鍵 2】這裡改為 false。讓畫面翻轉交給 CSS 就好，AI 專心抓原始座標，才不會打架
+        const pose = await net.estimateSinglePose(video, { flipHorizontal: false });
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         if (target.active) {
@@ -131,7 +132,7 @@
         checkHit(leftWrist);
         checkHit(rightWrist);
 
-        // 畫出綠色除錯點點
+        // 畫出綠色點點，幫助我們確認 AI 有抓到手
         drawPoint(ctx, leftWrist);
         drawPoint(ctx, rightWrist);
 
@@ -142,12 +143,11 @@
         const padding = target.radius + 20;
         target.x = Math.random() * (canvas.width - padding * 2) + padding;
         target.y = Math.random() * (canvas.height - padding * 2) + padding;
-        if (target.y < canvas.height * 0.2) target.y += canvas.height * 0.2; // 避開頂部分數區
+        if (target.y < canvas.height * 0.25) target.y += canvas.height * 0.25; 
         target.active = true;
     }
 
     function checkHit(keypoint) {
-        // 【關鍵修改4】放寬 AI 的嚴格度到 0.2
         if (!target.active || keypoint.score < 0.2) return;
         const dx = keypoint.position.x - target.x, dy = keypoint.position.y - target.y;
         if (Math.sqrt(dx*dx + dy*dy) < target.radius) {

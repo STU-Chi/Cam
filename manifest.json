@@ -1,0 +1,15 @@
+{
+  "name": "健康揮手大挑戰",
+  "short_name": "揮手復健",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f0f8ff",
+  "theme_color": "#3498db",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3048/3048122.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
