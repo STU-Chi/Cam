@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>健康樂活揮手大挑戰 - 影像辨識版</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2.2.2/dist/posenet.min.js"></script>
+    
+    <style>
+        body { font-family: '微軟正黑體', sans-serif; background-color: #f0f8ff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; text-align: center; }
+        #app-container { width: 95%; max-width: 800px; height: 90vh; background: white; padding: 20px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); position: relative; display: flex; flex-direction: column; align-items: center; }
+        
+        h1 { color: #2c3e50; font-size: 2.5em; margin: 10px 0; }
+        p.desc { font-size: 1.3em; color: #7f8c8d; }
+
+        /* 大按鈕設計 */
+        .btn { display: inline-block; padding: 20px 40px; font-size: 2em; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; transition: 0.3s; box-shadow: 0 5px 15px rgba(0,0,0,0.2); text-decoration: none; }
+        #btn-start { background: linear-gradient(45deg, #FF512F, #DD2476); color: white; margin-top: 50px; }
+        #btn-start:hover { transform: scale(1.05); }
+        #btn-start:disabled { background: #bdc3c7; cursor: wait; }
+
+        /* 遊戲區域 - 視訊與目標 overlay */
+        #game-area { display: none; position: relative; width: 640px; height: 480px; background: #000; border-radius: 15px; overflow: hidden; border: 5px solid #3498db; }
+        #video { transform: scaleX(-1); /* 視訊鏡像，像照鏡子一樣 */ width: 640px; height: 480px; object-fit: cover; }
+        #game-canvas { position: absolute; top: 0; left: 0; transform: scaleX(-1); /* Canvas也要鏡像對齊 */ width: 640px; height: 480px; }
+        
+        #ui-layer { position: absolute; top: 10px; width: 100%; display: flex; justify-content: space-around; font-size: 2em; font-weight: bold; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); z-index: 10; }
+        
+        /* 載入中動畫 */
+        #loading-status { font-size: 1.5em; color: #f39c12; margin-top: 20px; display: none; }
+
+        /* 結果視窗與照片 */
+        #result-screen { display: none; flex-direction: column; justify-content: center; align-items: center; gap: 20px; }
+        #final-photo-canvas { border: 5px solid white; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); max-width: 80%; height: auto; }
+
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <div id="main-menu">
+        <h1>健康樂活揮手大挑戰</h1>
+        <p class="desc">面對鏡頭，揮動手臂拍擊目標！<br>訓練關節靈活度，活化大腦。</p>
+        <div id="loading-status">🔄 正在初始化AI模型，請稍候...</div>
+        <button id="btn-start" class="btn" onclick="initGame()" disabled>載入中...</button>
+    </div>
+
+    <div id="game-area">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="game-canvas" width="640" height="480"></canvas>
+        <div id="ui-layer">
+            <div>分數: <span id="score">0</span></div>
+            <div>時間: <span id="timer">30</span>s</div>
+        </div>
+    </div>
+
+    <div id="result-screen">
+        <h2>🎉 訓練完成！ 🎉</h2>
+        <canvas id="final-photo-canvas" width="640" height="480"></canvas>
+        <p style="font-size: 2em; font-weight: bold;">您的得分: <span id="final-score" style="color: #e74c3c;">0</span></p>
+        <p id="upload-status" style="font-size: 1.3em; color: #7f8c8d;"></p>
+        <button class="btn" style="background:#3498db; color:white; font-size:1.5em;" onclick="location.reload()">再玩一次</button>
+    </div>
+</div>
+
+<script>
+    // ⚠️ 貼心提醒：請在此處填入您的 Discord Webhook URL
+    const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1490915002364985415/IIiu_o6Y5k7sfA5vs3FbsXxyTk1clSHrBpeNSVv2FcmhTXARqtsc3npq3PXpIRmVTz96"; 
+    
+    let net; // PoseNet 模型
+    let video = document.getElementById('video');
+    let canvas = document.getElementById('game-canvas');
+    let ctx = canvas.getContext('2d');
+    
+    let score = 0;
+    let timeLeft = 30; // 遊戲時間 30 秒
+    let gameInterval, timerInterval;
+    let isGameRunning = false;
+    
+    // 目標物位置與尺寸 (超大尺寸，方便長輩拍擊)
+    let target = { x: 0, y: 0, radius: 60, active: false };
+
+    // 頁面載入時先初始化 PoseNet
+    window.onload = async () => {
+        document.getElementById('loading-status').style.display = 'block';
+        try {
+            // 載入模型 (手機或舊電腦建議用 'mobileNetV1'，效能較好)
+            net = await posenet.load({
+                architecture: 'MobileNetV1',
+                outputStride: 16,
+                inputResolution: { width: 640, height: 480 },
+                multiplier: 0.75
+            });
+            document.getElementById('loading-status').style.display = 'none';
+            let startBtn = document.getElementById('btn-start');
+            startBtn.innerText = "開始揮手挑戰！";
+            startBtn.disabled = false;
+        } catch (e) {
+            document.getElementById('loading-status').innerText = "❌ 模型載入失敗，請檢查網路或更換瀏覽器。";
+            console.error(e);
+        }
+    };
+
+    // 初始化視訊鏡頭並開始遊戲
+    async function initGame() {
+        document.getElementById('main-menu').style.display = 'none';
+        document.getElementById('game-area').style.display = 'block';
+
+        try {
+            // 請求開啟鏡頭
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+            video.srcObject = stream;
+            
+            // 視訊流載入完成後開始循環偵測
+            video.onloadedmetadata = () => {
+                isGameRunning = true;
+                score = 0;
+                timeLeft = 30;
+                document.getElementById('score').innerText = score;
+                document.getElementById('timer').innerText = timeLeft;
+                
+                spawnTarget(); // 產生第一個目標
+                gameLoop();    // 開始 AI 偵測循環
+                
+                // 倒數計時器
+                timerInterval = setInterval(() => {
+                    timeLeft--;
+                    document.getElementById('timer').innerText = timeLeft;
+                    if (timeLeft <= 0) endGame();
+                }, 1000);
+            };
+        } catch (e) {
+            alert("無法開啟鏡頭，請確保已授權權限。");
+            location.reload();
+        }
+    }
+
+    // 遊戲主循環：AI 偵測 + 畫面繪製 + 碰撞偵測
+    async function gameLoop() {
+        if (!isGameRunning) return;
+
+        // 1. 使用 PoseNet 偵測單人姿勢
+        const pose = await net.estimateSinglePose(video, {
+            flipHorizontal: false // 因為 CSS 已經鏡像了，這裡設為 false
+        });
+
+        // 2. 清除 Canvas 並繪製視訊內容到 Canvas 上 (為了畫目標和最後截圖用)
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // 注意：這裡不把 video 畫上去，video 已經在底部顯示，Canvas 只畫目標物，這樣效能較好
+        
+        // 3. 如果有目標物，畫出來
+        if (target.active) {
+            ctx.beginPath();
+            // 畫實心圓
+            ctx.arc(target.x, target.y, target.radius, 0, 2 * Math.PI);
+            ctx.fillStyle = "#e74c3c"; // 紅色
+            ctx.fill();
+            // 畫外圈
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = "white";
+            ctx.stroke();
+            ctx.closePath();
+        }
+
+        // 4. 取得關鍵點 (我們專注在兩隻手的手腕)
+        const leftWrist = pose.keypoints.find(k => k.part === 'leftWrist');
+        const rightWrist = pose.keypoints.find(k => k.part === 'rightWrist');
+
+        // 5. 檢查手腕是否「撞擊」目標
+        checkHit(leftWrist);
+        checkHit(rightWrist);
+
+        // 可選：在網頁上畫出偵測到的手腕點 (除錯用)
+        // drawPoint(ctx, leftWrist);
+        // drawPoint(ctx, rightWrist);
+
+        // 6. 繼續下一次偵測
+        requestAnimationFrame(gameLoop);
+    }
+
+    // 產生新的隨機目標 (避開邊緣和中間分數顯示區)
+    function spawnTarget() {
+        const padding = target.radius + 20;
+        target.x = Math.random() * (canvas.width - padding * 2) + padding;
+        target.y = Math.random() * (canvas.height - padding * 2) + padding;
+        // 避免出現在最上方文字區
+        if (target.y < 100) target.y += 100;
+        target.active = true;
+    }
+
+    // 碰撞偵測逻辑
+    function checkHit(keypoint) {
+        // 如果置信度太低，不計入
+        if (!target.active || keypoint.score < 0.5) return;
+
+        // 計算點到圓心的距離 (勾股定理)
+        const dx = keypoint.position.x - target.x;
+        const dy = keypoint.position.y - target.y;
+        const distance = Math.sqrt(dx*dx + dy*dy);
+
+        // 如果距離小於圓半徑，代表擊中
+        if (distance < target.radius) {
+            score += 10;
+            document.getElementById('score').innerText = score;
+            target.active = false;
+            // 短暫延遲後產生下一個，給長輩反應時間
+            setTimeout(spawnTarget, 300); 
+        }
+    }
+
+    // 結束遊戲、拍照並上傳
+    function endGame() {
+        isGameRunning = false;
+        clearInterval(timerInterval);
+        
+        document.getElementById('game-area').style.display = 'none';
+        document.getElementById('result-screen').style.display = 'flex';
+        document.getElementById('final-score').innerText = score;
+
+        // === 拍照環節 ===
+        const finalCanvas = document.getElementById('final-photo-canvas');
+        const finalCtx = finalCanvas.getContext('2d');
+        
+        // 1. 將視訊鏡頭目前的畫面畫上去 (需要手動做鏡像處理，否則照片是反的)
+        finalCtx.save();
+        finalCtx.scale(-1, 1); // 水平翻轉
+        finalCtx.drawImage(video, -640, 0, 640, 480);
+        finalCtx.restore();
+
+        // 2. 在照片上蓋上分數浮水印
+        finalCtx.font = "bold 40px 微軟正黑體";
+        finalCtx.fillStyle = "white";
+        finalCtx.strokeStyle = "black";
+        finalCtx.lineWidth = 2;
+        const text = "今日訓練得分: " + score + " 分";
+        finalCtx.fillText(text, 20, 440);
+        finalCtx.strokeText(text, 20, 440);
+
+        // 關閉鏡頭省電
+        video.srcObject.getTracks().forEach(track => track.stop());
+
+        // === 上傳至 Discord ===
+        uploadResultToDiscord(finalCanvas);
+    }
+
+    // 將 Canvas 轉為 Blob 並透過 Webhook 上傳 (包含內容與檔案)
+    function uploadResultToDiscord(canvasElement) {
+        document.getElementById('upload-status').innerText = "正在傳送訓練成績與照片...";
+
+        if (DISCORD_WEBHOOK_URL === "YOUR_DISCORD_WEBHOOK_URL_HERE") {
+            document.getElementById('upload-status').innerText = "⚠️ 尚未設定 Webhook，成績僅顯示於本機。";
+            return;
+        }
+
+        // 將 Canvas 轉為 Blob (Binary Large Object)
+        canvasElement.toBlob(async (blob) => {
+            // 使用 FormData 包裝檔案與文字資料
+            const formData = new FormData();
+            
+            // 1. 檔案部分 (Discord Webhook 接受名為 'file' 的檔案)
+            formData.append('file', blob, 'daily_training.jpg');
+
+            // 2. 文字內容部分 (payload_json)
+            const payload = {
+                content: `🏋️ **長輩視訊復健訓練回報** 🏋️`,
+                embeds: [{
+                    title: "訓練成功！",
+                    color: 3066993, // 綠色
+                    fields: [
+                        { name: "遊戲得分", value: `**${score}** 分`, inline: true },
+                        { name: "訓練項目", value: "肢體協調/關節活動", inline: true }
+                    ],
+                    timestamp: new Date().toISOString()
+                }]
+            };
+            formData.append('payload_json', JSON.stringify(payload));
+
+            try {
+                const response = await fetch(DISCORD_WEBHOOK_URL, {
+                    method: 'POST',
+                    body: formData // 注意：傳送 FormData 時不要設定 Content-Type header
+                });
+
+                if (response.ok) {
+                    document.getElementById('upload-status').innerText = "✅ 成績與照片已成功傳送至家人頻道！";
+                } else {
+                    throw new Error('Upload failed');
+                }
+            } catch (error) {
+                console.error(error);
+                document.getElementById('upload-status').innerText = "❌ 上傳失敗 (請檢查網路或 Webhook網址)。";
+            }
+        }, 'image/jpeg', 0.8); // 轉為 JPEG，品質 0.8 減小檔案大小
+    }
+
+    // 除錯用：畫出關鍵點
+    function drawPoint(ctx, kp) {
+        if (kp.score > 0.5) {
+            ctx.beginPath();
+            ctx.arc(kp.position.x, kp.position.y, 10, 0, 2 * Math.PI);
+            ctx.fillStyle = "#2ecc71";
+            ctx.fill();
+            ctx.closePath();
+        }
+    }
+</script>
+
+</body>
+</html>
