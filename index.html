@@ -25,9 +25,9 @@
         #btn-start { background: linear-gradient(45deg, #FF512F, #DD2476); color: white; margin-top: 20px; }
         #btn-start:disabled { background: #bdc3c7; cursor: wait; }
 
-        /* 讓遊戲區域完美貼合螢幕，解決座標錯亂 */
         #game-area { display: none; position: relative; width: 100%; max-width: 640px; background: #000; overflow: hidden; }
-        #video { width: 100%; height: auto; transform: scaleX(-1); display: block; }
+        /* 影片與畫布的顯示比例設定 */
+        #video { width: 100%; height: auto; transform: scaleX(-1); display: block; object-fit: cover; }
         #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); }
         
         #ui-layer { position: absolute; top: 10px; width: 100%; display: flex; justify-content: space-around; font-size: 1.8em; font-weight: bold; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 10; }
@@ -66,16 +66,17 @@
 </div>
 
 <script>
-    // 記得將這行換成您的 Discord Webhook
-    const DISCORD_WEBHOOK_URL = "YOUR_DISCORD_WEBHOOK_URL_HERE"; 
+    // 您的 Discord Webhook 網址
+    const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1490915002364985415/IIiu_o6Y5k7sfA5vs3FbsXxyTk1clSHrBpeNSVv2FcmhTXARqtsc3npq3PXpIRmVTz96"; 
     
     let net, video = document.getElementById('video'), canvas = document.getElementById('game-canvas'), ctx = canvas.getContext('2d');
     let score = 0, timeLeft = 30, timerInterval, isGameRunning = false;
-    let target = { x: 0, y: 0, radius: 40, active: false }; // 紅點半徑稍微縮小，更適合手機
+    let target = { x: 0, y: 0, radius: 40, active: false };
 
     window.onload = async () => {
         document.getElementById('loading-status').style.display = 'block';
         try {
+            // 使用較輕量的模型設定，適合手機運算
             net = await posenet.load({ architecture: 'MobileNetV1', outputStride: 16, multiplier: 0.75 });
             document.getElementById('loading-status').style.display = 'none';
             let startBtn = document.getElementById('btn-start');
@@ -88,33 +89,46 @@
         document.getElementById('game-area').style.display = 'block';
 
         try {
-            // 使用手機前置鏡頭
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
             video.srcObject = stream;
             
-            // 等待影片確實讀取到尺寸後再繼續
-            video.onloadeddata = () => {
-                // 讓畫布跟影片的真實畫素完全 1:1 對齊
+            // 使用 onloadeddata 確保影片第一幀已載入
+            video.onloadeddata = async () => {
+                // 【終極修復關鍵！！】
+                // 明確告知瀏覽器與 AI 模型，這支影片的「真實 HTML 像素長寬」
+                // 沒有這兩行，AI 會以為畫面是 0x0 像素，導致座標永遠在右上角！
+                video.width = video.videoWidth;
+                video.height = video.videoHeight;
+                
+                // 畫布也要跟著影片的真實尺寸走
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
+                
+                // 強制在手機上開始播放 (解決部分 iOS 阻擋播放的問題)
+                await video.play();
                 
                 isGameRunning = true; score = 0; timeLeft = 30;
                 document.getElementById('score').innerText = score;
                 document.getElementById('timer').innerText = timeLeft;
                 
-                spawnTarget(); gameLoop();
+                spawnTarget(); 
+                gameLoop();
+                
                 timerInterval = setInterval(() => {
                     timeLeft--; document.getElementById('timer').innerText = timeLeft;
                     if (timeLeft <= 0) endGame();
                 }, 1000);
             };
-        } catch (e) { alert("無法開啟鏡頭，請確認是否允許相機權限。"); location.reload(); }
+        } catch (e) { 
+            alert("無法開啟鏡頭，請確認是否允許相機權限。"); 
+            location.reload(); 
+        }
     }
 
     async function gameLoop() {
         if (!isGameRunning) return;
 
-        // 【修復關鍵 2】這裡改為 false。讓畫面翻轉交給 CSS 就好，AI 專心抓原始座標，才不會打架
+        // 翻轉設為 false，因為 CSS 已經幫我們轉了
         const pose = await net.estimateSinglePose(video, { flipHorizontal: false });
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
@@ -132,7 +146,7 @@
         checkHit(leftWrist);
         checkHit(rightWrist);
 
-        // 畫出綠色點點，幫助我們確認 AI 有抓到手
+        // 畫出綠色點點確認 AI 有抓到手
         drawPoint(ctx, leftWrist);
         drawPoint(ctx, rightWrist);
 
@@ -148,6 +162,7 @@
     }
 
     function checkHit(keypoint) {
+        // 放寬到 0.2 讓長輩比較容易得分
         if (!target.active || keypoint.score < 0.2) return;
         const dx = keypoint.position.x - target.x, dy = keypoint.position.y - target.y;
         if (Math.sqrt(dx*dx + dy*dy) < target.radius) {
