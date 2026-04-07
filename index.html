@@ -142,7 +142,7 @@
 
         // 1. 使用 PoseNet 偵測單人姿勢
         const pose = await net.estimateSinglePose(video, {
-            flipHorizontal: false // 因為 CSS 已經鏡像了，這裡設為 false
+            flipHorizontal: true // 因為 CSS 已經鏡像了，這裡設為 false
         });
 
         // 2. 清除 Canvas 並繪製視訊內容到 Canvas 上 (為了畫目標和最後截圖用)
@@ -172,8 +172,8 @@
         checkHit(rightWrist);
 
         // 可選：在網頁上畫出偵測到的手腕點 (除錯用)
-        // drawPoint(ctx, leftWrist);
-        // drawPoint(ctx, rightWrist);
+         drawPoint(ctx, leftWrist);
+         drawPoint(ctx, rightWrist);
 
         // 6. 繼續下一次偵測
         requestAnimationFrame(gameLoop);
@@ -192,7 +192,7 @@
     // 碰撞偵測逻辑
     function checkHit(keypoint) {
         // 如果置信度太低，不計入
-        if (!target.active || keypoint.score < 0.5) return;
+        if (!target.active || keypoint.score < 0.4) return;
 
         // 計算點到圓心的距離 (勾股定理)
         const dx = keypoint.position.x - target.x;
