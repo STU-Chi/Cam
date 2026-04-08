@@ -15,25 +15,52 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2.2.2/dist/posenet.min.js"></script>
     
     <style>
+        /* ============================
+           核心樣式修改區 (修正電腦排版)
+           ============================ */
+
         body { font-family: '微軟正黑體', sans-serif; background-color: #f0f8ff; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; text-align: center; }
-        #app-container { width: 100%; max-width: 800px; height: 100%; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        
+        /* 1. 放寬電腦版的容器大小 ( max-width: 1500px )，讓結果畫面可以伸展開來 */
+        #app-container { width: 100%; max-width: 1500px; height: 100%; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
         
         h1 { color: #2c3e50; font-size: 2em; margin: 10px 0; padding: 0 10px; }
-        p.desc { font-size: 1.1em; color: #7f8c8d; }
+        p.desc { font-size: 1.1em; color: #7f8c8d;}
 
-        .btn { display: inline-block; padding: 15px 30px; font-size: 1.5em; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        .btn { display: inline-block; padding: 15px 30px; font-size: 1.5em; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; box-shadow: 0 5px 15px rgba(0,0,0,0.2); text-decoration: none;}
         #btn-start { background: linear-gradient(45deg, #FF512F, #DD2476); color: white; margin-top: 20px; }
         #btn-start:disabled { background: #bdc3c7; cursor: wait; }
 
-        #game-area { display: none; position: relative; width: 100%; max-width: 640px; background: #000; overflow: hidden; }
+        /* 2. 【修復關鍵】：還原遊戲畫面大小 ( max-width: 640px ) */
+        #game-area { display: none; position: relative; width: 100%; max-width: 750px; background: #000; overflow: hidden; }
         #video { width: 100%; height: auto; transform: scaleX(-1); display: block; }
         #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); }
         
         #ui-layer { position: absolute; top: 10px; width: 100%; display: flex; justify-content: space-around; font-size: 1.8em; font-weight: bold; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 10; }
         #loading-status { font-size: 1.2em; color: #f39c12; margin-top: 20px; display: none; font-weight: bold; }
         
-        #result-screen { display: none; flex-direction: column; justify-content: center; align-items: center; gap: 15px; width: 100%; }
-        #final-photo-canvas { border: 5px solid white; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); max-width: 90%; height: auto; }
+        /* 3. 【修復關鍵】：修正電腦結果畫面佈局 */
+        #result-screen { 
+            display: none; 
+            flex-direction: column; 
+            justify-content: flex-start; 
+            align-items: center; 
+            gap: 9px; 
+            width: 100%; 
+            height: 100%; 
+            padding-top: 10px; 
+            box-sizing: border-box; 
+        }
+        
+        /* 4. 【修復關鍵】：修正結果畫面的照片大小與位置 */
+        #final-photo-canvas { 
+            border: 5px solid white; 
+            border-radius: 15px; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3); 
+            max-width: 500px; 
+            height: auto; 
+            margin-top: -12px; 
+        }
     </style>
 </head>
 <body>
@@ -51,26 +78,30 @@
         <canvas id="game-canvas"></canvas>
         <div id="ui-layer">
             <div>分數: <span id="score" style="color: #f1c40f;">0</span></div>
-            <div>時間: <span id="timer">30</span>s</div>
+            <div>時間: <span id="timer">15</span>s</div>
         </div>
     </div>
 
     <div id="result-screen">
-        <h2>🎉 訓練完成！</h2>
+        <h2>🎉 訓練完成！ 🎉</h2>
+        
         <canvas id="final-photo-canvas"></canvas>
-        <p style="font-size: 1.8em; font-weight: bold;">得分: <span id="final-score" style="color: #e74c3c;">0</span></p>
-        <p id="upload-status" style="font-size: 1.1em; color: #7f8c8d;"></p>
-        <button class="btn" style="background:#3498db; color:white;" onclick="location.reload()">再玩一次</button>
+        
+        <p style="font-size: 1.8em; font-weight: bold; margin: 10px 0;">得分: <span id="final-score" style="color: #e74c3c;">0</span></p>
+        
+        <p id="upload-status" style="font-size: 1.1em; color: #7f8c8d; margin-top: -10px; margin-bottom: 5px;"></p>
+        
+        <button class="btn" style="background:#3498db; color:white; margin-top: 0px;" onclick="location.reload()">回主畫面</button>
     </div>
 </div>
 
 <script>
-    // 記得將這行換成您的 Discord Webhook
     const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1490915002364985415/IIiu_o6Y5k7sfA5vs3FbsXxyTk1clSHrBpeNSVv2FcmhTXARqtsc3npq3PXpIRmVTz96"; 
     
     let net, video = document.getElementById('video'), canvas = document.getElementById('game-canvas'), ctx = canvas.getContext('2d');
     let score = 0, timeLeft = 30, timerInterval, isGameRunning = false;
-    let target = { x: 0, y: 0, radius: 40, active: false };
+    
+    let target = { x: 0, y: 0, radius: 30, active: false };
 
     window.onload = async () => {
         document.getElementById('loading-status').style.display = 'block';
@@ -90,15 +121,13 @@
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
             video.srcObject = stream;
             
-            // 【終極修復】：使用 onplay 確保影片真的有畫面了才開始設定
             video.onplay = () => {
-                // 【核心解法】：強制寫入 video 的內部像素尺寸，AI 才不會抓到 0x0 的瞎子畫面
                 video.width = video.videoWidth;
                 video.height = video.videoHeight;
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 
-                isGameRunning = true; score = 0; timeLeft = 30;
+                isGameRunning = true; score = 0; timeLeft = 15;
                 document.getElementById('score').innerText = score;
                 document.getElementById('timer').innerText = timeLeft;
                 
@@ -116,7 +145,6 @@
     async function gameLoop() {
         if (!isGameRunning) return;
 
-        // 【雙重保險】：確定影片已經準備好資料，再讓 AI 判斷
         if (video.readyState >= 2) {
             const pose = await net.estimateSinglePose(video, { flipHorizontal: false });
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -129,41 +157,62 @@
                 ctx.closePath();
             }
 
-            const leftWrist = pose.keypoints.find(k => k.part === 'leftWrist');
-            const rightWrist = pose.keypoints.find(k => k.part === 'rightWrist');
+            const keypoints = pose.keypoints;
+            
+            const leftPalmPos = getPalmPosition(keypoints, 'leftWrist', 'leftElbow');
+            const rightPalmPos = getPalmPosition(keypoints, 'rightWrist', 'rightElbow');
 
-            checkHit(leftWrist);
-            checkHit(rightWrist);
+            checkHit(leftPalmPos);
+            checkHit(rightPalmPos);
 
-            drawPoint(ctx, leftWrist);
-            drawPoint(ctx, rightWrist);
+             drawPalmPoint(ctx, leftPalmPos);
+             drawPalmPoint(ctx, rightPalmPos);
         }
 
         requestAnimationFrame(gameLoop);
     }
 
+    function getPalmPosition(keypoints, wristName, elbowName) {
+        const wrist = keypoints.find(k => k.part === wristName);
+        const elbow = keypoints.find(k => k.part === elbowName);
+        if (wrist && elbow && wrist.score > 0.3 && elbow.score > 0.3) {
+            const vectorX = wrist.position.x - elbow.position.x;
+            const vectorY = wrist.position.y - elbow.position.y;
+            const extensionFactor = 1.25;
+            return {
+                position: {
+                    x: elbow.position.x + vectorX * extensionFactor,
+                    y: elbow.position.y + vectorY * extensionFactor
+                },
+                score: wrist.score
+            };
+        }
+        return null;
+    }
+
+    function drawPalmPoint(ctx, palmPoint) {
+        if (palmPoint && palmPoint.score > 0.3) {
+            ctx.beginPath(); 
+            ctx.arc(palmPoint.position.x, palmPoint.position.y, 15, 0, 2 * Math.PI);
+            ctx.fillStyle = "#2ecc71"; ctx.fill(); 
+            ctx.closePath();
+        }
+    }
+
     function spawnTarget() {
-        const padding = target.radius + 20;
+        const padding = target.radius + 30;
         target.x = Math.random() * (canvas.width - padding * 2) + padding;
         target.y = Math.random() * (canvas.height - padding * 2) + padding;
         if (target.y < canvas.height * 0.25) target.y += canvas.height * 0.25; 
         target.active = true;
     }
 
-    function checkHit(keypoint) {
-        if (!target.active || keypoint.score < 0.2) return;
-        const dx = keypoint.position.x - target.x, dy = keypoint.position.y - target.y;
+    function checkHit(palmPoint) {
+        if (!target.active || !palmPoint || palmPoint.score < 0.3) return;
+        const dx = palmPoint.position.x - target.x, dy = palmPoint.position.y - target.y;
         if (Math.sqrt(dx*dx + dy*dy) < target.radius) {
             score += 10; document.getElementById('score').innerText = score;
             target.active = false; setTimeout(spawnTarget, 200); 
-        }
-    }
-
-    function drawPoint(ctx, kp) {
-        // 如果分數大於 0.2，才畫出綠點 (避免誤判)
-        if (kp && kp.score > 0.2) {
-            ctx.beginPath(); ctx.arc(kp.position.x, kp.position.y, 15, 0, 2 * Math.PI);
-            ctx.fillStyle = "#2ecc71"; ctx.fill(); ctx.closePath();
         }
     }
 
@@ -181,8 +230,20 @@
         finalCtx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
         finalCtx.restore();
 
-        finalCtx.font = "bold 40px 微軟正黑體"; finalCtx.fillStyle = "white"; finalCtx.strokeStyle = "black"; finalCtx.lineWidth = 2;
-        finalCtx.fillText("得分: " + score, 20, canvas.height - 30); finalCtx.strokeText("得分: " + score, 20, canvas.height - 30);
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        const dateString = `${year}/${month}/${day}`;
+
+        finalCtx.font = "bold 28px 微軟正黑體"; 
+        finalCtx.fillStyle = "white"; 
+        finalCtx.textBaseline = "top"; 
+
+        const margin = 20; 
+        const textY = canvas.height - margin - 35; 
+        
+        finalCtx.fillText(`紀錄日期: ${dateString}`, margin, textY);
 
         video.srcObject.getTracks().forEach(track => track.stop());
         uploadResultToDiscord(finalCanvas);
