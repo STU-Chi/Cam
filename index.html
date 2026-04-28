@@ -2,267 +2,288 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#3498db">
-    <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3048/3048122.png">
-    
-    <title>健康樂活揮手大挑戰</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2.2.2/dist/posenet.min.js"></script>
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>顏色訓練反應</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <script src="manifest.json"></script>
     <style>
-        /* ============================
-           核心樣式修改區 (修正電腦排版)
-           ============================ */
-
-        body { font-family: '微軟正黑體', sans-serif; background-color: #f0f8ff; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; text-align: center; }
-        
-        /* 1. 放寬電腦版的容器大小 ( max-width: 1500px )，讓結果畫面可以伸展開來 */
-        #app-container { width: 100%; max-width: 1500px; height: 100%; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
-        
-        h1 { color: #2c3e50; font-size: 2em; margin: 10px 0; padding: 0 10px; }
-        p.desc { font-size: 1.1em; color: #7f8c8d;}
-
-        .btn { display: inline-block; padding: 15px 30px; font-size: 1.5em; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; box-shadow: 0 5px 15px rgba(0,0,0,0.2); text-decoration: none;}
-        #btn-start { background: linear-gradient(45deg, #FF512F, #DD2476); color: white; margin-top: 20px; }
-        #btn-start:disabled { background: #bdc3c7; cursor: wait; }
-
-        /* 2. 【修復關鍵】：還原遊戲畫面大小 ( max-width: 640px ) */
-        #game-area { display: none; position: relative; width: 100%; max-width: 750px; background: #000; overflow: hidden; }
-        #video { width: 100%; height: auto; transform: scaleX(-1); display: block; }
-        #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); }
-        
-        #ui-layer { position: absolute; top: 10px; width: 100%; display: flex; justify-content: space-around; font-size: 1.8em; font-weight: bold; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 10; }
-        #loading-status { font-size: 1.2em; color: #f39c12; margin-top: 20px; display: none; font-weight: bold; }
-        
-        /* 3. 【修復關鍵】：修正電腦結果畫面佈局 */
-        #result-screen { 
-            display: none; 
-            flex-direction: column; 
-            justify-content: flex-start; 
-            align-items: center; 
-            gap: 9px; 
-            width: 100%; 
-            height: 100%; 
-            padding-top: 10px; 
-            box-sizing: border-box; 
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f0f4f8; font-family: sans-serif; overflow: hidden; }
+        #app-container { position: relative; width: 100%; max-width: 500px; height: 100%; background: white; overflow: hidden; display: flex; flex-direction: column; }
+        .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; background: white; z-index: 10; padding: 20px; box-sizing: border-box; }
+        h1 { font-size: 28px; margin-bottom: 10px; }
+        .btn { padding: 15px; margin: 10px; font-size: 18px; font-weight: bold; cursor: pointer; border: none; border-radius: 12px; color: white; width: 80%; }
+        .btn-start { background: #27ae60; } .btn-esp { background: #2980b9; }
+        #game-screen { display: none; background: #ecf0f1; }
+        #status-bar { width: 100%; padding: 15px; background: #34495e; color: white; display: flex; justify-content: space-between; font-weight: bold; }
+        #color-container { display: flex; flex-direction: column; justify-content: space-around; align-items: center; flex-grow: 1; width: 100%; padding: 20px 0; }
+        .color-block { width: 120px; height: 120px; border-radius: 50%; opacity: 0.1; transition: 0.1s; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        .color-block.active { opacity: 1; transform: scale(1.1); }
+        @media (min-width: 600px) {
+            #app-container { max-width: 800px; height: 500px; border-radius: 15px; }
+            #color-container { flex-direction: row; }
+            .color-block { width: 150px; height: 150px; }
         }
-        
-        /* 4. 【修復關鍵】：修正結果畫面的照片大小與位置 */
-        #final-photo-canvas { 
-            border: 5px solid white; 
-            border-radius: 15px; 
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3); 
-            max-width: 500px; 
-            height: auto; 
-            margin-top: -12px; 
-        }
+        #btn-R { background: #e74c3c; border: 6px solid #c0392b; }
+        #btn-Y { background: #f1c40f; border: 6px solid #f39c12; }
+        #btn-B { background: #3498db; border: 6px solid #2980b9; }
+        .time-box { font-size: 16px; color: #7f8c8d; margin-top: 5px; }
+        .analysis-card { width: 90%; padding: 15px; border-radius: 10px; margin-top: 15px; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div id="app-container">
-    <div id="main-menu">
-        <h1>健康樂活揮手大挑戰</h1>
-        <p class="desc">請將手機放好，面對鏡頭揮動手臂！</p>
-        <div id="loading-status">🔄 AI 啟動中，請稍候...</div>
-        <button id="btn-start" class="btn" onclick="initGame()" disabled>載入中...</button>
+    <div id="menu-screen" class="screen">
+        <h1>🧠 色彩反應大師</h1>
+        <button class="btn btn-start" onclick="startGame()">▶️ 開始訓練</button>
+        <button class="btn btn-esp" style="background:#e67e22" onclick="connectMQTT()">☁️ 雲端網路連線</button>
+        <button class="btn btn-esp" onclick="connectBLE()">🔗 藍牙連線 (手機推薦)</button>
+        <button class="btn btn-esp" style="background:#8e44ad" onclick="connectSerial()">🔌 有線連線 (電腦推薦)</button>
+        <div id="conn-msg" style="margin-top:10px; font-weight:bold;">等待連線...</div>
     </div>
 
-    <div id="game-area">
-        <video id="video" autoplay playsinline muted></video>
-        <canvas id="game-canvas"></canvas>
-        <div id="ui-layer">
-            <div>分數: <span id="score" style="color: #f1c40f;">0</span></div>
-            <div>時間: <span id="timer">15</span>s</div>
+    <div id="game-screen" class="screen">
+        <div id="status-bar">
+            <span>回合: <span id="ui-round">1/10</span></span>
+            <span id="ui-timer">0.0s</span>
+        </div>
+        <div id="color-container">
+            <div id="btn-R" class="color-block" onclick="handleInput('R')"></div>
+            <div id="btn-Y" class="color-block" onclick="handleInput('Y')"></div>
+            <div id="btn-B" class="color-block" onclick="handleInput('B')"></div>
         </div>
     </div>
 
-    <div id="result-screen">
-        <h2>🎉 訓練完成！ 🎉</h2>
-        
-        <canvas id="final-photo-canvas"></canvas>
-        
-        <p style="font-size: 1.8em; font-weight: bold; margin: 10px 0;">得分: <span id="final-score" style="color: #e74c3c;">0</span></p>
-        
-        <p id="upload-status" style="font-size: 1.1em; color: #7f8c8d; margin-top: -10px; margin-bottom: 5px;"></p>
-        
-        <button class="btn" style="background:#3498db; color:white; margin-top: 0px;" onclick="location.reload()">回主畫面</button>
+    <div id="result-screen" class="screen" style="display:none;">
+        <h1>📊 結算報告</h1>
+        <div id="result-time-compare" class="time-box"></div>
+        <h2 id="result-score" style="margin:10px 0;">分數：--</h2>
+        <div id="result-analysis" class="analysis-card"></div>
+        <button class="btn btn-start" onclick="returnToMenu()">返回主選單</button>
     </div>
 </div>
 
 <script>
-    const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1490915002364985415/IIiu_o6Y5k7sfA5vs3FbsXxyTk1clSHrBpeNSVv2FcmhTXARqtsc3npq3PXpIRmVTz96"; 
+    let bleChar = null, serialWriter = null;
+    let mqttClient = null; 
     
-    let net, video = document.getElementById('video'), canvas = document.getElementById('game-canvas'), ctx = canvas.getContext('2d');
-    let score = 0, timeLeft = 30, timerInterval, isGameRunning = false;
-    
-    let target = { x: 0, y: 0, radius: 30, active: false };
+    const topic_cmd = "my_color_trainer/cmd";
+    const topic_evt = "my_color_trainer/evt";
 
-    window.onload = async () => {
-        document.getElementById('loading-status').style.display = 'block';
-        try {
-            net = await posenet.load({ architecture: 'MobileNetV1', outputStride: 16, multiplier: 0.75 });
-            document.getElementById('loading-status').style.display = 'none';
-            let startBtn = document.getElementById('btn-start');
-            startBtn.innerText = "開始挑戰！"; startBtn.disabled = false;
-        } catch (e) { alert("模型載入失敗，請檢查網路。"); }
-    };
+    let gameStartTime, totalGameTime, roundTimer;
+    const TOTAL_ROUNDS = 10;
+    let currentRound = 0, scoreCount = 0, currentActiveColor = null, isWaiting = false;
 
-    async function initGame() {
-        document.getElementById('main-menu').style.display = 'none';
-        document.getElementById('game-area').style.display = 'block';
-
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
-            video.srcObject = stream;
-            
-            video.onplay = () => {
-                video.width = video.videoWidth;
-                video.height = video.videoHeight;
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                
-                isGameRunning = true; score = 0; timeLeft = 15;
-                document.getElementById('score').innerText = score;
-                document.getElementById('timer').innerText = timeLeft;
-                
-                spawnTarget(); 
-                gameLoop();
-                
-                timerInterval = setInterval(() => {
-                    timeLeft--; document.getElementById('timer').innerText = timeLeft;
-                    if (timeLeft <= 0) endGame();
-                }, 1000);
-            };
-        } catch (e) { alert("無法開啟鏡頭，請確認是否允許相機權限。"); location.reload(); }
+    function updateStatus(msg, ok) {
+        document.getElementById('conn-msg').innerText = msg;
+        document.getElementById('conn-msg').style.color = ok ? "#27ae60" : "#e74c3c";
     }
 
-    async function gameLoop() {
-        if (!isGameRunning) return;
+    async function sendCmd(c) {
+        try {
+            if (bleChar) await bleChar.writeValue(new TextEncoder().encode(c));
+            if (serialWriter) await serialWriter.write(c + '\n');
+            if (mqttClient && mqttClient.isConnected()) {
+                const message = new Paho.MQTT.Message(c);
+                message.destinationName = topic_cmd;
+                mqttClient.send(message);
+            }
+        } catch (e) { console.error("發送失敗", e); }
+    }
 
-        if (video.readyState >= 2) {
-            const pose = await net.estimateSinglePose(video, { flipHorizontal: false });
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            if (target.active) {
-                ctx.beginPath();
-                ctx.arc(target.x, target.y, target.radius, 0, 2 * Math.PI);
-                ctx.fillStyle = "#e74c3c"; ctx.fill();
-                ctx.lineWidth = 5; ctx.strokeStyle = "white"; ctx.stroke();
-                ctx.closePath();
+    // --- MQTT 雲端連線 ---
+    function connectMQTT() {
+        if (typeof Paho === 'undefined') {
+            updateStatus("❌ MQTT 尚未載入，請重新整理網頁", false);
+            return;
+        }
+        updateStatus("正在連線至雲端伺服器...", false);
+        const clientId = "WebClient-" + Math.random().toString(16).substr(2, 8);
+        mqttClient = new Paho.MQTT.Client("broker.emqx.io", 8084, "/mqtt", clientId);
+
+        mqttClient.onConnectionLost = (responseObject) => {
+            if (responseObject.errorCode !== 0) updateStatus("❌ 雲端連線已斷開", false);
+        };
+
+        mqttClient.onMessageArrived = (message) => {
+            const topic = message.destinationName;
+            const m = message.payloadString.trim();
+
+            // 判斷是否為狀態訊息
+            if (topic === "my_color_trainer/status") {
+                if (m === "Online") {
+                    updateStatus("✅ 雲端已連線，設備在線中！", true);
+                } else {
+                    updateStatus("⚠️ 雲端已連線，但【設備已離線】", false);
+                }
+                return; // 狀態訊息處理完就結束，不進入下方的遊戲邏輯
             }
 
-            const keypoints = pose.keypoints;
-            
-            const leftPalmPos = getPalmPosition(keypoints, 'leftWrist', 'leftElbow');
-            const rightPalmPos = getPalmPosition(keypoints, 'rightWrist', 'rightElbow');
+            // 原本的遊戲按鈕邏輯
+            if (['R','Y','B'].includes(m)) handleInput(m);
+        };
 
-            checkHit(leftPalmPos);
-            checkHit(rightPalmPos);
+        mqttClient.connect({
+            useSSL: true,
+            onSuccess: () => {
+                // 修改提示文字，表示正在等設備反應
+                updateStatus("✅ 雲端已連線，正在偵測設備...", true); 
+                mqttClient.subscribe(topic_evt);
+                // 新增：訂閱設備狀態頻道
+                mqttClient.subscribe("my_color_trainer/status");
 
-             drawPalmPoint(ctx, leftPalmPos);
-             drawPalmPoint(ctx, rightPalmPos);
-        }
-
-        requestAnimationFrame(gameLoop);
+                // 主動發送一個指令，要求 ESP32 報到
+                const checkMsg = new Paho.MQTT.Message("STATUS_CHECK");
+                checkMsg.destinationName = topic_cmd;
+                mqttClient.send(checkMsg);
+            },
+            onFailure: (err) => {
+                updateStatus("❌ 雲端連線失敗", false);
+                console.error(err);
+            }
+        });
     }
 
-    function getPalmPosition(keypoints, wristName, elbowName) {
-        const wrist = keypoints.find(k => k.part === wristName);
-        const elbow = keypoints.find(k => k.part === elbowName);
-        if (wrist && elbow && wrist.score > 0.3 && elbow.score > 0.3) {
-            const vectorX = wrist.position.x - elbow.position.x;
-            const vectorY = wrist.position.y - elbow.position.y;
-            const extensionFactor = 1.25;
-            return {
-                position: {
-                    x: elbow.position.x + vectorX * extensionFactor,
-                    y: elbow.position.y + vectorY * extensionFactor
-                },
-                score: wrist.score
-            };
-        }
-        return null;
+    function startGame() {
+        currentRound = 0; scoreCount = 0;
+        gameStartTime = Date.now();
+        document.getElementById('menu-screen').style.display = 'none';
+        document.getElementById('game-screen').style.display = 'flex';
+        
+        roundTimer = setInterval(() => {
+            const sec = ((Date.now() - gameStartTime) / 1000).toFixed(1);
+            document.getElementById('ui-timer').innerText = sec + "s";
+        }, 100);
+
+        sendCmd("OFF_ALL");
+        nextRound();
     }
 
-    function drawPalmPoint(ctx, palmPoint) {
-        if (palmPoint && palmPoint.score > 0.3) {
-            ctx.beginPath(); 
-            ctx.arc(palmPoint.position.x, palmPoint.position.y, 15, 0, 2 * Math.PI);
-            ctx.fillStyle = "#2ecc71"; ctx.fill(); 
-            ctx.closePath();
-        }
+    function nextRound() {
+        if (currentRound >= TOTAL_ROUNDS) { endGame(); return; }
+        currentRound++;
+        document.getElementById('ui-round').innerText = `${currentRound}/${TOTAL_ROUNDS}`;
+        isWaiting = false;
+        document.querySelectorAll('.color-block').forEach(e => e.classList.remove('active'));
+        sendCmd("OFF_ALL");
+
+        setTimeout(() => {
+            currentActiveColor = ['R','Y','B'][Math.floor(Math.random()*3)];
+            document.getElementById(`btn-${currentActiveColor}`).classList.add('active');
+            sendCmd(`ON_${currentActiveColor}`);
+            isWaiting = true;
+        }, Math.random() * 1500 + 1000);
     }
 
-    function spawnTarget() {
-        const padding = target.radius + 30;
-        target.x = Math.random() * (canvas.width - padding * 2) + padding;
-        target.y = Math.random() * (canvas.height - padding * 2) + padding;
-        if (target.y < canvas.height * 0.25) target.y += canvas.height * 0.25; 
-        target.active = true;
+    function returnToMenu() {
+        document.getElementById('result-screen').style.display = 'none';
+        document.getElementById('menu-screen').style.display = 'flex';
     }
 
-    function checkHit(palmPoint) {
-        if (!target.active || !palmPoint || palmPoint.score < 0.3) return;
-        const dx = palmPoint.position.x - target.x, dy = palmPoint.position.y - target.y;
-        if (Math.sqrt(dx*dx + dy*dy) < target.radius) {
-            score += 10; document.getElementById('score').innerText = score;
-            target.active = false; setTimeout(spawnTarget, 200); 
-        }
+    function handleInput(c) {
+        if (!isWaiting) return;
+        isWaiting = false;
+        if (c === currentActiveColor) scoreCount++;
+        sendCmd("OFF_ALL");
+        setTimeout(nextRound, 500);
     }
 
+    // --- 發送 Discord 戰報 ---
+    function sendDiscordWebhook(s, a, t, lt, msg) {
+        const WEBHOOK = "https://discord.com/api/webhooks/1490915002364985415/IIiu_o6Y5k7sfA5vs3FbsXxyTk1clSHrBpeNSVv2FcmhTXARqtsc3npq3PXpIRmVTz96";
+        if (!WEBHOOK.includes("http")) return;
+        fetch(WEBHOOK, {
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                embeds: [{
+                    title: "老年認知訓練戰報",
+                    color: 3447003,
+                    fields: [
+                        { name: "🎯 本次得分", value: `${s} 分 (${a}%)`, inline: true },
+                        { name: "⏱️ 本次耗時", value: `${t} 秒`, inline: true },
+                        { name: "⌛ 上次耗時", value: `${lt} 秒`, inline: true },
+                        { name: "📊 系統評價", value: msg, inline: false }
+                    ]
+                }]
+            })
+        }).catch(err => console.error("Discord 發送失敗", err));
+    }
+
+    // --- 遊戲結算 ---
     function endGame() {
-        isGameRunning = false; clearInterval(timerInterval);
-        document.getElementById('game-area').style.display = 'none';
+        clearInterval(roundTimer);
+        totalGameTime = ((Date.now() - gameStartTime) / 1000).toFixed(1);
+        sendCmd("OFF_ALL");
+
+        let lastTime = localStorage.getItem('last_total_time') || "--";
+        let lastScore = parseInt(localStorage.getItem('last_score')) || 0;
+        let lastAcc = parseInt(localStorage.getItem('last_acc')) || 0;
+        const acc = (scoreCount / TOTAL_ROUNDS) * 100;
+
+        document.getElementById('result-time-compare').innerHTML = `本次耗時：${totalGameTime}s | 上次耗時：${lastTime}s`;
+        document.getElementById('result-score').innerText = `分數：${scoreCount} / 10 (${acc}%)`;
+
+        let analysis = document.getElementById('result-analysis');
+        let evalMsg = ""; // 用來記錄系統評價字串
+        
+        if (scoreCount > lastScore || acc > lastAcc) {
+            evalMsg = `📈 進步了！分數比上次高 ${scoreCount - lastScore} 分！`;
+            analysis.style.background = "#d4edda"; analysis.style.color = "#155724";
+        } else {
+            evalMsg = `💪 持之以恆！再試一次，挑戰上次的紀錄吧！`;
+            analysis.style.background = "#fff3cd"; analysis.style.color = "#856404";
+        }
+        analysis.innerText = evalMsg;
+
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbzqgGBh4xP6HIGAwRpc4oxbbYJ1LBqgINlQSNNiOw_yEiRJMzT5Sr66Zkyq2RePx2CNSg/exec"; // 貼上剛才部署的連結
+        fetch(GAS_URL)
+            .then(() => console.log("Google 紀錄成功"))
+            .catch(err => console.error("Google 紀錄失敗", err));
+            
+        // 觸發 Discord Webhook 發送
+        sendDiscordWebhook(scoreCount, acc, totalGameTime, lastTime, evalMsg);
+
+        localStorage.setItem('last_total_time', totalGameTime);
+        localStorage.setItem('last_score', scoreCount);
+        localStorage.setItem('last_acc', acc);
+
+        document.getElementById('game-screen').style.display = 'none';
         document.getElementById('result-screen').style.display = 'flex';
-        document.getElementById('final-score').innerText = score;
-
-        const finalCanvas = document.getElementById('final-photo-canvas');
-        finalCanvas.width = canvas.width; finalCanvas.height = canvas.height;
-        const finalCtx = finalCanvas.getContext('2d');
-        
-        finalCtx.save(); finalCtx.scale(-1, 1);
-        finalCtx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
-        finalCtx.restore();
-
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = String(today.getMonth() + 1).padStart(2, '0');
-        const day = String(today.getDate()).padStart(2, '0');
-        const dateString = `${year}/${month}/${day}`;
-
-        finalCtx.font = "bold 28px 微軟正黑體"; 
-        finalCtx.fillStyle = "white"; 
-        finalCtx.textBaseline = "top"; 
-
-        const margin = 20; 
-        const textY = canvas.height - margin - 35; 
-        
-        finalCtx.fillText(`紀錄日期: ${dateString}`, margin, textY);
-
-        video.srcObject.getTracks().forEach(track => track.stop());
-        uploadResultToDiscord(finalCanvas);
     }
 
-    function uploadResultToDiscord(canvasElement) {
-        if (DISCORD_WEBHOOK_URL === "YOUR_DISCORD_WEBHOOK_URL_HERE") return;
-        document.getElementById('upload-status').innerText = "上傳照片中...";
-        canvasElement.toBlob(async (blob) => {
-            const formData = new FormData();
-            formData.append('file', blob, 'daily_training.jpg');
-            formData.append('payload_json', JSON.stringify({ content: `長輩視訊復健訓練回報 (得分: **${score}**) 分` }));
-            try {
-                await fetch(DISCORD_WEBHOOK_URL, { method: 'POST', body: formData });
-                document.getElementById('upload-status').innerText = "✅ 已傳送至 Discord！";
-            } catch (error) { document.getElementById('upload-status').innerText = "❌ 上傳失敗。"; }
-        }, 'image/jpeg', 0.8);
+    // --- 藍牙與有線連線保留 ---
+    async function connectBLE() {
+        try {
+            const dev = await navigator.bluetooth.requestDevice({ filters: [{ name: 'ESP32_Trainer' }], optionalServices: ["4fafc201-1fb5-459e-8fcc-c5c9c331914b"] });
+            const srv = await dev.gatt.connect();
+            const svc = await srv.getPrimaryService("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
+            bleChar = await svc.getCharacteristic("beb5483e-36e1-4688-b7f5-ea07361b26a8");
+            await bleChar.startNotifications();
+            bleChar.addEventListener('characteristicvaluechanged', e => {
+                const m = new TextDecoder().decode(e.target.value).trim();
+                if (['R','Y','B'].includes(m)) handleInput(m);
+            });
+            updateStatus("✅ 藍牙已連接", true);
+        } catch (e) { updateStatus("❌ 連接失敗", false); }
+    }
+
+    async function connectSerial() {
+        try {
+            const p = await navigator.serial.requestPort();
+            await p.open({ baudRate: 115200 });
+            const out = new TextEncoderStream(); out.readable.pipeTo(p.writable);
+            serialWriter = out.writable.getWriter();
+            const ins = new TextDecoderStream(); p.readable.pipeTo(ins.writable);
+            const rdr = ins.readable.getReader();
+            updateStatus("✅ 有線已連接", true);
+            while(true) {
+                const {value, done} = await rdr.read();
+                if (done) break;
+                if (value && ['R','Y','B'].includes(value.trim())) handleInput(value.trim());
+            }
+        } catch (e) { updateStatus("❌ 連接失敗", false); }
     }
 </script>
-
 </body>
 </html>
