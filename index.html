@@ -151,33 +151,78 @@
 
     async function gameLoop() {
         if (!isGameRunning) return;
-        const pose = await net.estimateSinglePose(video, { flipHorizontal: false });
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (target.active) {
-            ctx.beginPath(); ctx.arc(target.x, target.y, target.radius, 0, Math.PI*2);
-            ctx.fillStyle = "#e74c3c"; ctx.fill(); ctx.closePath();
-        }
-        const keypoints = pose.keypoints;
-        ['leftWrist', 'rightWrist'].forEach(part => {
-            const kp = keypoints.find(k => k.part === part);
-            if (kp && kp.score > 0.5) {
-                ctx.beginPath(); ctx.arc(kp.position.x, kp.position.y, 15, 0, Math.PI*2);
-                ctx.fillStyle = "#2ecc71"; ctx.fill();
-                let dx = kp.position.x - target.x, dy = kp.position.y - target.y;
-                if (Math.sqrt(dx*dx + dy*dy) < target.radius) {
-                    score += 10; document.getElementById('score').innerText = score;
-                    target.active = false; setTimeout(spawnTarget, 200);
-                }
+
+        if (video.readyState >= 2) {
+            const pose = await net.estimateSinglePose(video, { flipHorizontal: false });
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (target.active) {
+                ctx.beginPath();
+                ctx.arc(target.x, target.y, target.radius, 0, 2 * Math.PI);
+                ctx.fillStyle = "#e74c3c"; ctx.fill();
+                ctx.lineWidth = 5; ctx.strokeStyle = "white"; ctx.stroke();
+                ctx.closePath();
             }
-        });
+
+            const keypoints = pose.keypoints;
+            
+            const leftPalmPos = getPalmPosition(keypoints, 'leftWrist', 'leftElbow');
+            const rightPalmPos = getPalmPosition(keypoints, 'rightWrist', 'rightElbow');
+
+            checkHit(leftPalmPos);
+            checkHit(rightPalmPos);
+
+             drawPalmPoint(ctx, leftPalmPos);
+             drawPalmPoint(ctx, rightPalmPos);
+        }
+
         requestAnimationFrame(gameLoop);
     }
 
+    function getPalmPosition(keypoints, wristName, elbowName) {
+        const wrist = keypoints.find(k => k.part === wristName);
+        const elbow = keypoints.find(k => k.part === elbowName);
+        if (wrist && elbow && wrist.score > 0.3 && elbow.score > 0.3) {
+            const vectorX = wrist.position.x - elbow.position.x;
+            const vectorY = wrist.position.y - elbow.position.y;
+            const extensionFactor = 1.25;
+            return {
+                position: {
+                    x: elbow.position.x + vectorX * extensionFactor,
+                    y: elbow.position.y + vectorY * extensionFactor
+                },
+                score: wrist.score
+            };
+        }
+        return null;
+    }
+
+    function drawPalmPoint(ctx, palmPoint) {
+        if (palmPoint && palmPoint.score > 0.3) {
+            ctx.beginPath(); 
+            ctx.arc(palmPoint.position.x, palmPoint.position.y, 15, 0, 2 * Math.PI);
+            ctx.fillStyle = "#2ecc71"; ctx.fill(); 
+            ctx.closePath();
+        }
+    }
+
     function spawnTarget() {
-        target.x = Math.random() * (canvas.width - 100) + 50;
-        target.y = Math.random() * (canvas.height - 100) + 50;
+        const padding = target.radius + 30;
+        target.x = Math.random() * (canvas.width - padding * 2) + padding;
+        target.y = Math.random() * (canvas.height - padding * 2) + padding;
+        if (target.y < canvas.height * 0.25) target.y += canvas.height * 0.25; 
         target.active = true;
     }
+
+    function checkHit(palmPoint) {
+        if (!target.active || !palmPoint || palmPoint.score < 0.3) return;
+        const dx = palmPoint.position.x - target.x, dy = palmPoint.position.y - target.y;
+        if (Math.sqrt(dx*dx + dy*dy) < target.radius) {
+            score += 10; document.getElementById('score').innerText = score;
+            target.active = false; setTimeout(spawnTarget, 200); 
+        }
+    }
+
 
     function endGame() {
         isGameRunning = false;
