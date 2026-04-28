@@ -3,28 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#3498db">
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3048/3048122.png">
     
-    <title>健康樂活揮手大挑戰 PWA</title>
+    <title>健康樂活揮手大挑戰</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2.2.2/dist/posenet.min.js"></script>
     
     <style>
+        /* ============================
+           核心樣式修改區 (修正電腦排版)
+           ============================ */
+
         body { font-family: '微軟正黑體', sans-serif; background-color: #f0f8ff; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; text-align: center; }
+        
+        /* 1. 放寬電腦版的容器大小 ( max-width: 1500px )，讓結果畫面可以伸展開來 */
         #app-container { width: 100%; max-width: 1500px; height: 100%; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
-        h1 { color: #2c3e50; font-size: 2em; margin: 10px 0; }
-        .btn { display: inline-block; padding: 15px 30px; font-size: 1.2em; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; box-shadow: 0 5px 15px rgba(0,0,0,0.2); text-decoration: none; margin: 5px; }
-        #btn-start { background: linear-gradient(45deg, #FF512F, #DD2476); color: white; }
-        #btn-start:disabled { background: #bdc3c7; }
-        #game-area { display: none; position: relative; width: 100%; max-width: 750px; background: #000; }
+        
+        h1 { color: #2c3e50; font-size: 2em; margin: 10px 0; padding: 0 10px; }
+        p.desc { font-size: 1.1em; color: #7f8c8d;}
+
+        .btn { display: inline-block; padding: 15px 30px; font-size: 1.5em; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; box-shadow: 0 5px 15px rgba(0,0,0,0.2); text-decoration: none;}
+        #btn-start { background: linear-gradient(45deg, #FF512F, #DD2476); color: white; margin-top: 20px; }
+        #btn-start:disabled { background: #bdc3c7; cursor: wait; }
+
+        /* 2. 【修復關鍵】：還原遊戲畫面大小 ( max-width: 640px ) */
+        #game-area { display: none; position: relative; width: 100%; max-width: 750px; background: #000; overflow: hidden; }
         #video { width: 100%; height: auto; transform: scaleX(-1); display: block; }
         #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); }
-        #ui-layer { position: absolute; top: 10px; width: 100%; display: flex; justify-content: space-around; font-size: 1.5em; font-weight: bold; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 10; }
-        #result-screen { display: none; flex-direction: column; align-items: center; width: 100%; padding: 20px; box-sizing: border-box; }
-        #final-photo-canvas { border: 5px solid white; border-radius: 15px; max-width: 100%; height: auto; }
-        input { padding: 12px; width: 80%; max-width: 300px; border-radius: 8px; border: 1px solid #ddd; margin: 10px 0; font-size: 1em; }
+        
+        #ui-layer { position: absolute; top: 10px; width: 100%; display: flex; justify-content: space-around; font-size: 1.8em; font-weight: bold; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 10; }
+        #loading-status { font-size: 1.2em; color: #f39c12; margin-top: 20px; display: none; font-weight: bold; }
+        
+        /* 3. 【修復關鍵】：修正電腦結果畫面佈局 */
+        #result-screen { 
+            display: none; 
+            flex-direction: column; 
+            justify-content: flex-start; 
+            align-items: center; 
+            gap: 9px; 
+            width: 100%; 
+            height: 100%; 
+            padding-top: 10px; 
+            box-sizing: border-box; 
+        }
+        
+        /* 4. 【修復關鍵】：修正結果畫面的照片大小與位置 */
+        #final-photo-canvas { 
+            border: 5px solid white; 
+            border-radius: 15px; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3); 
+            max-width: 500px; 
+            height: auto; 
+            margin-top: -12px; 
+        }
     </style>
 </head>
 <body>
@@ -49,7 +85,6 @@
         <h2>🎉 挑戰成功！</h2>
         <canvas id="final-photo-canvas"></canvas>
         <p style="font-size: 1.5em; font-weight: bold;">得分：<span id="final-score" style="color: #e74c3c;">0</span></p>
-        <input type="email" id="user-email" placeholder="輸入接收結果的 Gmail">
         <p id="upload-status" style="color: #7f8c8d;"></p>
         <div>
             <button class="btn" style="background:#27ae60; color:white;" onclick="sendToGmail()">寄送結果</button>
@@ -88,18 +123,30 @@
     async function initGame() {
         document.getElementById('main-menu').style.display = 'none';
         document.getElementById('game-area').style.display = 'block';
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-        video.srcObject = stream;
-        video.onplay = () => {
-            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-            isGameRunning = true; score = 0; timeLeft = 15;
-            spawnTarget(); gameLoop();
-            let timerInterval = setInterval(() => {
-                timeLeft--; document.getElementById('timer').innerText = timeLeft;
-                if (timeLeft <= 0) { clearInterval(timerInterval); endGame(); }
-            }, 1000);
-            speak("遊戲開始，揮揮手拍掉紅球！");
-        };
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+            video.srcObject = stream;
+            
+            video.onplay = () => {
+                video.width = video.videoWidth;
+                video.height = video.videoHeight;
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                
+                isGameRunning = true; score = 0; timeLeft = 15;
+                document.getElementById('score').innerText = score;
+                document.getElementById('timer').innerText = timeLeft;
+                
+                spawnTarget(); 
+                gameLoop();
+                
+                timerInterval = setInterval(() => {
+                    timeLeft--; document.getElementById('timer').innerText = timeLeft;
+                    if (timeLeft <= 0) endGame();
+                }, 1000);
+            };
+        } catch (e) { alert("無法開啟鏡頭，請確認是否允許相機權限。"); location.reload(); }
     }
 
     async function gameLoop() {
@@ -154,7 +201,7 @@
 
     async function sendToGmail() {
         const email = document.getElementById('user-email').value;
-        if (!email.includes('@')) return alert("請輸入正確 Email");
+        if (!email.includes('@')) return alert("");
         document.getElementById('upload-status').innerText = "發送中...";
         const img = document.getElementById('final-photo-canvas').toDataURL('image/jpeg', 0.7).split(',')[1];
         try {
